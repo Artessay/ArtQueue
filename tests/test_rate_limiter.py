@@ -8,13 +8,16 @@ import asyncio
 import os
 
 import pytest
+import pytest_asyncio
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
+
+from typing import AsyncGenerator
 
 # ------------------------------------------------------------------------------
 # Fixtures
 # ------------------------------------------------------------------------------
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session")
 def event_loop():
     """Create an event loop visible to all tests (required by pytest-asyncio)."""
     loop = asyncio.new_event_loop()
@@ -22,17 +25,17 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture
-async def client(monkeypatch) -> TestClient:
+@pytest_asyncio.fixture
+async def client(monkeypatch) -> AsyncGenerator[TestClient, None]:
     """
     Spin up the rate-limiter service with MAX_QPM=3 for quick feedback.
     """
     os.environ["MAX_QPM"] = "3"
 
-    from app.rate_limiter import init_app, QPMMiddleware
+    from app import init_app, RateLimiter
 
     # Make the window as short as 2 seconds to avoid 60-second sleeps
-    monkeypatch.setattr(QPMMiddleware, "WINDOW_SECONDS", 2)
+    monkeypatch.setattr(RateLimiter, "WINDOW_SECONDS", 2)
 
     app: web.Application = await init_app()
     server = TestServer(app)
@@ -49,6 +52,10 @@ async def post_json(client: TestClient, url: str, payload: dict):
     assert resp.status == 200, await resp.text()
     return await resp.json()
 
+async def print_status(client: TestClient):
+    status = await client.get("/status")
+    js = await status.json()
+    print(f"Status: {js}")
 
 # ------------------------------------------------------------------------------
 # Tests
@@ -56,7 +63,7 @@ async def post_json(client: TestClient, url: str, payload: dict):
 @pytest.mark.asyncio
 async def test_qpm_limit_and_queue(client: TestClient):
     """Verify that only MAX_QPM requests are admitted immediately."""
-    ids = [f"req-{i}" for i in range(4)]  # 4 > MAX_QPM(=3)
+    ids = [f"req-{i}" for i in range(5)]  # 5 > MAX_QPM(=3)
 
     # First three requests should be admitted immediately (queue_position == 0)
     for idx in range(3):
@@ -72,6 +79,28 @@ async def test_qpm_limit_and_queue(client: TestClient):
     assert js["active_requests"] == 3
     assert js["queue_length"] == 1
 
+    # Fifth request must be queued (position 0 inside queue)
+    body = await post_json(client, "/check", {"request_id": ids[4]})
+    assert body["queue_position"] == 2  # index 2? (queued after 0)
+    # Now there should be 3 active + 2 queued
+    status = await client.get("/status")
+    js = await status.json()
+    assert js["active_requests"] == 3
+    assert js["queue_length"] == 2
+
+    # Fourth request already be queued (position 0 inside queue)
+    body = await post_json(client, "/check", {"request_id": ids[3]})
+    assert body["queue_position"] == 1  # index 1? (queued after 0)
+    # Now there should be 3 active + 1 queued
+    status = await client.get("/status")
+    js = await status.json()
+    assert js["active_requests"] == 3
+    assert js["queue_length"] == 2
+
+    # already active (position 0 inside queue)
+    body = await post_json(client, "/check", {"request_id": ids[2]})
+    assert body["queue_position"] == -1
+
 
 @pytest.mark.asyncio
 async def test_release_promotes_next(client: TestClient):
@@ -86,6 +115,7 @@ async def test_release_promotes_next(client: TestClient):
 
     status = await client.get("/status")
     js = await status.json()
+    await print_status(client)
     # Still 3 active, 0 queued
     assert js["active_requests"] == 3
     assert js["queue_length"] == 0

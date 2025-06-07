@@ -1,4 +1,5 @@
 aiohttp
 aiohttp_swagger3
 pytest
+pytest-asyncio
 Requests

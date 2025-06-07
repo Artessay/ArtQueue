@@ -1,9 +1,11 @@
 import os
 from aiohttp import web
 from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
+from typing import Final
 
-from rate_limiter import RateLimiter
+from app.rate_limiter import RateLimiter
 
+RATE_LIMITER_KEY: Final[web.AppKey["RateLimiter"]] = web.AppKey("rate_limiter")
 
 ###############################################################################
 # Environment configuration
@@ -17,7 +19,7 @@ MAX_QPM = int(os.getenv("MAX_QPM", "100"))
 async def init_app() -> web.Application:
     app = web.Application()
 
-    app["rate_limiter"] = RateLimiter(MAX_QPM)
+    app[RATE_LIMITER_KEY] = RateLimiter(MAX_QPM)
 
     # ---------------------------------------------------- #
     # Swagger/OpenAPI setup
@@ -75,7 +77,7 @@ async def init_app() -> web.Application:
         if not request_id:
             return web.json_response({"error": "Missing request_id"}, status=400)
 
-        rate_limiter: RateLimiter = request.app["rate_limiter"]
+        rate_limiter: RateLimiter = request.app[RATE_LIMITER_KEY]
         position = await rate_limiter.check_queue(request_id)
         return web.json_response({"queue_position": position})
 
@@ -113,7 +115,7 @@ async def init_app() -> web.Application:
         if not request_id:
             return web.json_response({"error": "Missing request_id"}, status=400)
 
-        rate_limiter: RateLimiter = request.app["rate_limiter"]
+        rate_limiter: RateLimiter = request.app[RATE_LIMITER_KEY]
         success = await rate_limiter.release_resource(request_id)
         if not success:
             return web.json_response(
@@ -135,7 +137,7 @@ async def init_app() -> web.Application:
                 schema:
                   type: object
         """
-        rate_limiter: RateLimiter = request.app["rate_limiter"]
+        rate_limiter: RateLimiter = request.app[RATE_LIMITER_KEY]
         status = await rate_limiter.get_status()
         return web.json_response(status)
 

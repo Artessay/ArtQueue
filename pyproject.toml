@@ -1,0 +1,37 @@
+[build-system]
+# setuptools >=64 supports PEP-621; wheel is used for packaging
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "artqueue"           # Choose a name, preferably the same as the repository
+version = "1.0.0"
+description = "Rate-limiter service with global QPM limit."
+authors = [{ name = "Your Name", email = "you@example.com" }]
+readme = "README.md"
+license = { text = "Apache" }
+requires-python = ">=3.9"
+
+# Runtime dependencies
+dependencies = [
+  "aiohttp>=3.12",
+  "aiohttp-swagger3>=0.10",
+  "requests>=2.32", 
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=1.0",
+]
+
+# ------------------------------------------
+# setuptools configuration
+# ------------------------------------------
+[tool.setuptools]
+packages = ["app"]
+# Removed py-modules since only the app package is needed
+
+[tool.setuptools.package-data]
+# If there are static files under app/, list them here
+# app = ["data/*.json"]
