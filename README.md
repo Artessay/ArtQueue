@@ -26,7 +26,14 @@ python app/main.py
 
 ## Deployment
 
+Install pyinstaller
+
 ```bash
 pip install pyinstaller
+```
+
+Package the app
+
+```bash
 pyinstaller app/main.py -F --name RateLimiter
 ```
