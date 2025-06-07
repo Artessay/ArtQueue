@@ -56,6 +56,7 @@ class RateLimiter:
 
     def _promote_waiting(self) -> None:
         """Move queued requests to active while capacity is available."""
+        assert False, "This function is only useful after the notify function is implemented."
         logger.warning("This function is only useful after the notify function is implemented.")
         while self._queue and len(self._active) < self.max_qpm:
             rid = self._queue.pop(0)
@@ -66,6 +67,7 @@ class RateLimiter:
                 len(self._active),
                 len(self._queue),
             )
+
 
     # --------------------------------------------------------------------- #
     # Public API
@@ -85,6 +87,18 @@ class RateLimiter:
 
             # Already in queue → return its position
             if request_id in self._queue:
+                # without notify, we can't move the request to the front of the queue
+                if len(self._active) < self.max_qpm:
+                    # dequeue and admit
+                    self._queue.remove(request_id)
+                    self._active[request_id] = self._now()
+                    logger.info(
+                        "Request %s promoted from queue. Active=%d  Queue=%d",
+                        request_id,
+                        len(self._active),
+                        len(self._queue),
+                    )
+                    return 0
                 idx = self._queue.index(request_id) + 1 # use 1-based index
                 logger.info("Request %s already in queue at pos %d", request_id, idx)
                 return idx
@@ -127,7 +141,7 @@ class RateLimiter:
                 len(self._active),
             )
             # Promote queued requests if possible
-            self._promote_waiting()
+            # self._promote_waiting()
             return True
 
     async def get_status(self) -> dict:

@@ -8,7 +8,7 @@ conda activate queue
 
 ```bash
 # Install dependencies
-pip install fastapi uvicorn aiohttp pydantic rich python-dotenv
+pip install -e .
 ```
 
 ```bash
