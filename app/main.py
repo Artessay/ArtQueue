@@ -1,8 +1,8 @@
 import os
 from aiohttp import web
-from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo
+from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 
-from app.rate_limiter import RateLimiter
+from rate_limiter import RateLimiter
 
 
 ###############################################################################
@@ -17,20 +17,23 @@ MAX_QPM = int(os.getenv("MAX_QPM", "100"))
 async def init_app() -> web.Application:
     app = web.Application()
 
-    rate_limiter = RateLimiter(max_qpm=MAX_QPM)
+    app["rate_limiter"] = RateLimiter(MAX_QPM)
 
     # ---------------------------------------------------- #
     # Swagger/OpenAPI setup
     # ---------------------------------------------------- #
-    info = SwaggerInfo(
-        title="Rate-Limit Service",
-        version="1.0.0",
-        description=(
-            "Simple rate-limiting service that enforces a global "
-            f"QPM (queries-per-minute) limit. MAX_QPM={MAX_QPM}"
+    swagger = SwaggerDocs(
+        app,
+        swagger_ui_settings=SwaggerUiSettings(path="/docs/"),
+        info=SwaggerInfo(
+            title="Rate-Limit Service",
+            version="1.0.0",
+            description=(
+                "Rate-limiting service that enforces a global "
+                f"QPM (queries-per-minute) limit. Current MAX_QPM={MAX_QPM}"
+            ),
         ),
     )
-    SwaggerDocs(app, swagger_info=info)
 
     # ---------------------------------------------------- #
     # Route handlers
@@ -72,6 +75,7 @@ async def init_app() -> web.Application:
         if not request_id:
             return web.json_response({"error": "Missing request_id"}, status=400)
 
+        rate_limiter: RateLimiter = request.app["rate_limiter"]
         position = await rate_limiter.check_queue(request_id)
         return web.json_response({"queue_position": position})
 
@@ -109,6 +113,7 @@ async def init_app() -> web.Application:
         if not request_id:
             return web.json_response({"error": "Missing request_id"}, status=400)
 
+        rate_limiter: RateLimiter = request.app["rate_limiter"]
         success = await rate_limiter.release_resource(request_id)
         if not success:
             return web.json_response(
@@ -116,7 +121,7 @@ async def init_app() -> web.Application:
             )
         return web.json_response({"success": True})
 
-    async def status_handler(_: web.Request) -> web.Response:
+    async def status_handler(request: web.Request) -> web.Response:
         """
         ---
         description: Return current rate-limiter status.
@@ -130,15 +135,20 @@ async def init_app() -> web.Application:
                 schema:
                   type: object
         """
+        rate_limiter: RateLimiter = request.app["rate_limiter"]
         status = await rate_limiter.get_status()
         return web.json_response(status)
 
     # ---------------------------------------------------- #
     # Route registration
     # ---------------------------------------------------- #
-    app.router.add_post("/check", check_queue_handler)
-    app.router.add_post("/release", release_handler)
-    app.router.add_get("/status", status_handler)
+    swagger.add_routes(
+        [
+            web.post("/check", check_queue_handler),
+            web.post("/release", release_handler),
+            web.get("/status", status_handler),
+        ]
+    )
 
     return app
 
