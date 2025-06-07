@@ -6,31 +6,21 @@ class FrontendClient:
     def __init__(self, middleware_url="http://localhost:8080"):
         self.middleware_url = middleware_url
     
-    def make_request(self, backend_service_url):
+    def make_request(self):
         # 生成唯一请求ID
         request_id = str(uuid.uuid4())
         
         # 检查是否需要排队
         queue_position = self.check_queue(request_id)
         
-        if queue_position > 0:
+        # 可以实现轮询检查队列位置，或者使用WebSocket接收通知
+        while queue_position > 0:
             print(f"Request {request_id} is queued at position {queue_position}")
-            # 可以实现轮询检查队列位置，或者使用WebSocket接收通知
-            while queue_position > 0:
-                time.sleep(1)  # 避免过于频繁的请求
-                queue_position = self.check_queue(request_id)
-                print(f"Current queue position: {queue_position}")
+            time.sleep(10)  # 避免过于频繁的请求
+            queue_position = self.check_queue(request_id)
         
         print(f"Request {request_id} is being processed")
         
-        # 模拟请求后端服务
-        try:
-            response = requests.get(backend_service_url)
-            print(f"Backend response: {response.status_code}")
-            return response
-        finally:
-            # 无论成功与否，都释放资源
-            self.release_resource(request_id)
     
     def check_queue(self, request_id):
         response = requests.post(
@@ -59,7 +49,7 @@ if __name__ == "__main__":
     import threading
     
     def make_request():
-        client.make_request("http://backend-service/api/data")
+        client.make_request()
     
     # 模拟15个并发请求，超过中间件的默认并发限制10
     threads = []

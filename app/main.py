@@ -159,4 +159,5 @@ async def init_app() -> web.Application:
 # Entrypoint
 ###############################################################################
 if __name__ == "__main__":
-    web.run_app(init_app(), port=8080)
+    port = int(os.getenv("PORT", "8080")) 
+    web.run_app(init_app(), port=port)
