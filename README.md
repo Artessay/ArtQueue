@@ -35,5 +35,12 @@ pip install pyinstaller
 Package the app
 
 ```bash
-pyinstaller app/main.py -F --name RateLimiter
+pyinstaller app/main.py -F --name RateLimiter --collect-data aiohttp_swagger3
+```
+
+Deployment
+
+```bash
+# Run the app
+API_PORT=8085 MAX_QPM=64 ./RateLimiter
 ```
