@@ -5,6 +5,8 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+from app import EventNotifier
+
 ###############################################################################
 # Logger
 ###############################################################################
@@ -39,6 +41,9 @@ class RateLimiter:
         # Protects all mutable structures
         self._lock = asyncio.Lock()
 
+        # Event notifier
+        self._notifier = EventNotifier()
+
     # --------------------------------------------------------------------- #
     # Internal helpers
     # --------------------------------------------------------------------- #
@@ -53,25 +58,45 @@ class RateLimiter:
         for rid in expired_ids:
             logger.debug("Releasing expired request %s", rid)
             del self._active[rid]
+            self.unregister(rid)
+
+        # Promote queued requests if possible
+        self._promote_waiting()
 
     def _promote_waiting(self) -> None:
         """Move queued requests to active while capacity is available."""
-        assert False, "This function is only useful after the notify function is implemented."
-        logger.warning("This function is only useful after the notify function is implemented.")
         while self._queue and len(self._active) < self.max_qpm:
             rid = self._queue.pop(0)
-            self._active[rid] = self._now()
-            logger.info(
-                "Request %s promoted from queue. Active=%d  Queue=%d",
-                rid,
-                len(self._active),
-                len(self._queue),
-            )
+            self._active_request(rid)
 
+        # Notify listeners about queue position
+        for idx, rid in enumerate(self._queue):
+            self._notifier.notify_position(rid, idx + 1)
+
+    def _active_request(self, request_id: str) -> None:
+        assert len(self._active) < self.max_qpm
+        self._active[request_id] = self._now()
+        logger.info(
+            "Request %s promoted from queue. Active=%d  Queue=%d",
+            request_id,
+            len(self._active),
+            len(self._queue),
+        )
+        self._notifier.notify_position(request_id, 0)
 
     # --------------------------------------------------------------------- #
     # Public API
     # --------------------------------------------------------------------- #
+    def register(self, request_id: str) -> asyncio.Queue:
+        """Register a new listener for `request_id`."""
+        queue = self._notifier.register_listener(request_id)
+        self.check_queue(request_id)
+        return queue
+    
+    def unregister(self, request_id: str) -> None:
+        """Remove the listener for `request_id`."""
+        self._notifier.unregister_listener(request_id)
+
     async def check_queue(self, request_id: str) -> int:
         """
         Try to acquire a QPM slot for `request_id`.
@@ -87,18 +112,7 @@ class RateLimiter:
 
             # Already in queue → return its position
             if request_id in self._queue:
-                # without notify, we can't move the request to the front of the queue
-                if len(self._active) < self.max_qpm:
-                    # dequeue and admit
-                    self._queue.remove(request_id)
-                    self._active[request_id] = self._now()
-                    logger.info(
-                        "Request %s promoted from queue. Active=%d  Queue=%d",
-                        request_id,
-                        len(self._active),
-                        len(self._queue),
-                    )
-                    return 0
+                assert len(self._active) == self.max_qpm
                 idx = self._queue.index(request_id) + 1 # use 1-based index
                 logger.info("Request %s already in queue at pos %d", request_id, idx)
                 return idx
@@ -141,7 +155,7 @@ class RateLimiter:
                 len(self._active),
             )
             # Promote queued requests if possible
-            # self._promote_waiting()
+            self._promote_waiting()
             return True
 
     async def get_status(self) -> dict:
