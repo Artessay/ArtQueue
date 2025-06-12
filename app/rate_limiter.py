@@ -5,7 +5,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from app import EventNotifier
+from app.event_notifier import EventNotifier
 
 ###############################################################################
 # Logger
@@ -44,12 +44,21 @@ class RateLimiter:
         # Event notifier
         self._notifier = EventNotifier()
 
+        # Start background task to clean up expired requests
+        asyncio.create_task(self._janitor())
+
     # --------------------------------------------------------------------- #
     # Internal helpers
     # --------------------------------------------------------------------- #
     def _now(self) -> datetime:
         """Return current UTC timestamp."""
         return datetime.now(timezone.utc)
+    
+    async def _janitor(self):
+        while True:
+            await asyncio.sleep(1)
+            async with self._lock:
+                self._purge_expired()
 
     def _purge_expired(self) -> None:
         """Remove requests whose 60-second window has expired."""
@@ -71,18 +80,29 @@ class RateLimiter:
 
         # Notify listeners about queue position
         for idx, rid in enumerate(self._queue):
-            self._notifier.notify_position(rid, idx + 1)
+            asyncio.create_task(
+                self._notifier.notify_position(rid, idx + 1)
+            )
 
     def _active_request(self, request_id: str) -> None:
         assert len(self._active) < self.max_qpm
         self._active[request_id] = self._now()
+        
         logger.info(
-            "Request %s promoted from queue. Active=%d  Queue=%d",
+            "Request %s admitted. Active=%d/%d  Queue=%d",
             request_id,
             len(self._active),
+            self.max_qpm,
             len(self._queue),
         )
-        self._notifier.notify_position(request_id, 0)
+        asyncio.create_task(
+            self._notifier.notify_position(request_id, 0)
+        )
+
+    async def _check_and_notify(self, request_id: str) -> None:
+        """Notify listeners about queue position if changed."""
+        position = await self.check_queue(request_id)
+        await self._notifier.notify_position(request_id, position)
 
     # --------------------------------------------------------------------- #
     # Public API
@@ -90,7 +110,7 @@ class RateLimiter:
     def register(self, request_id: str) -> asyncio.Queue:
         """Register a new listener for `request_id`."""
         queue = self._notifier.register_listener(request_id)
-        self.check_queue(request_id)
+        asyncio.create_task(self._check_and_notify(request_id))
         return queue
     
     def unregister(self, request_id: str) -> None:

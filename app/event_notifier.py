@@ -1,3 +1,4 @@
+import json
 import asyncio
 
 class EventNotifier:
@@ -17,6 +18,10 @@ class EventNotifier:
         
     async def notify(self, request_id: str, payload: str) -> None:
         """Send an event to all listeners of `request_id`."""
+        if isinstance(payload, dict):
+            payload = json.dumps(payload)
+        assert isinstance(payload, str)
+
         if request_id in self._listeners:
             await self._listeners[request_id].put(payload)
 

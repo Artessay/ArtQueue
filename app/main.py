@@ -12,7 +12,7 @@ RATE_LIMITER_KEY: Final[web.AppKey["RateLimiter"]] = web.AppKey("rate_limiter")
 # Environment configuration
 ###############################################################################
 # Maximum queries per minute, configurable at deploy time.
-MAX_QPM = int(os.getenv("MAX_QPM", "100"))
+MAX_QPM = int(os.getenv("MAX_QPM", "10"))
 
 ###############################################################################
 # Web application & API routes
@@ -85,8 +85,8 @@ async def init_app() -> web.Application:
         try:
             while True:
                 payload = await queue.get()
-                await response.write(f"data: {payload}\n\n")
-                await response.drain()
+                await response.write(f"data: {payload}\n\n".encode("utf-8"))
+                await response.write(b'')
         except (asyncio.CancelledError, ConnectionResetError):
             pass
         finally:
