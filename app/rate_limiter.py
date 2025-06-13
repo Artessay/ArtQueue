@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
+import contextlib
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -45,7 +46,8 @@ class RateLimiter:
         self._notifier = EventNotifier()
 
         # Start background task to clean up expired requests
-        asyncio.create_task(self._janitor())
+        self._janitor_task = asyncio.create_task(self._janitor())
+    
 
     # --------------------------------------------------------------------- #
     # Internal helpers
@@ -55,10 +57,13 @@ class RateLimiter:
         return datetime.now(timezone.utc)
     
     async def _janitor(self):
-        while True:
-            await asyncio.sleep(1)
-            async with self._lock:
-                self._purge_expired()
+        try:
+            while True:
+                await asyncio.sleep(1)
+                async with self._lock:
+                    self._purge_expired()
+        except asyncio.CancelledError:
+            print("Cleanup task cancelled")
 
     def _purge_expired(self) -> None:
         """Remove requests whose 60-second window has expired."""
@@ -194,3 +199,10 @@ class RateLimiter:
                 },
             }
 
+    async def shutdown(self):
+        """Gracefully shutdown the rate limiter."""
+        if self._janitor_task.done():
+            return
+        self._janitor_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._janitor_task

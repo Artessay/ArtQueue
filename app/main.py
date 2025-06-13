@@ -22,6 +22,12 @@ async def init_app() -> web.Application:
 
     app[RATE_LIMITER_KEY] = RateLimiter(MAX_QPM)
 
+    async def on_shutdown(app: web.Application) -> None:
+        """Cleanup resources on application shutdown."""
+        rate_limiter: RateLimiter = app[RATE_LIMITER_KEY]
+        await rate_limiter.shutdown()
+    app.on_shutdown.append(on_shutdown)
+
     # ---------------------------------------------------- #
     # Swagger/OpenAPI setup
     # ---------------------------------------------------- #
