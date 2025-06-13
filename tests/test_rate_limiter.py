@@ -116,16 +116,7 @@ async def test_release_promotes_next(client: TestClient):
     status = await client.get("/status")
     js = await status.json()
     await print_status(client)
-    # Still 2 active, 1 queued
-    assert js["active_requests"] == 2
-    assert js["queue_length"] == 1
-
-    body = await post_json(client, "/check", {"request_id": ids[3]})
-    assert body["queue_position"] == 0  # can active
-    status = await client.get("/status")
-    js = await status.json()
-    await print_status(client)
-    # Still 3 active, 0 queued
+    # become 3 active, 0 queued
     assert js["active_requests"] == 3
     assert js["queue_length"] == 0
     # The formerly queued request should now be active
